@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>编辑动图</title>
+    <link rel="stylesheet" href="https://cdn.bootcss.com/bootstrap/3.3.7/css/bootstrap.min.css" integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u" crossorigin="anonymous">
+    <style type="text/css">
+        .div1 {
+            position: absolute;
+            left: 30%;
+            width: 40%;
+            margin-top: 20px;
+        }
+        .div1 canvas {
+            /*width: 300px;*/
+            /*height: 250px;*/
+        }
+    </style>
+</head>
+<body>
+    <div class="div1">
+        <button class="change-index" change-type="up">上一帧</button>
+        &nbsp; 当前第 <sapn id="Active_Index_Text"></sapn> 帧
+        <div style="width: 100%;margin-top: 10px;margin-bottom: 10px;">
+            <canvas>浏览器不支持canvas?还有这种浏览器?</canvas>
+        </div>
+        <button class="change-index" change-type="down">下一帧</button>
+        <button onclick="playTest()">播放</button>
+        <br>
+        内容: <input id="text" type="text" value="66666~"><br>
+        大小: <input id="font_size" type="number" value="20"><br>
+        长度: <input id="len" type="number" value="10"><br>
+        <button id="saveText" onclick="addText(this)">添加文本</button>
+        <button onclick="saveImg()">保存</button><br>
+        <a id="download_url" href="#" style="display: none" target="_blank">点击下载</a>
+    </div>
+    <div class="div2">
+    </div>
+    <script type="application/javascript" src="https://cdn.staticfile.org/jquery/3.2.1/jquery.min.js"></script>
+    <script type="application/javascript" src="/canvasObj.js"></script>
+    <script>
+        var Gif_Info = "$gif_info$";
+        var Ctx = null;
+        var Img_Cache = [];
+        var TextList = [];
+        var Active_Index = 0;
+        var Current_Text_Index = 0;
+
+        init();
+        function init(){
+            Ctx = new canvasObj(document.getElementsByTagName('canvas')[0]);
+            Ctx.on('click', function(obj){
+                if(obj.type === 'text'){
+                    Current_Text_Index = obj.dataIndex;
+                    $('#saveText').html('保存');
+                    $('#text').val(obj.text);
+                    $('#font_size').val(obj.font_size);
+                    $('#len').val(TextList[obj.dataIndex].len);
+                }else {
+                    $('#saveText').html('添加文本');
+                    $('#text').val('66666~');
+                    $('#font_size').val('20');
+                    $('#len').val(10);
+                }
+            });
+            drawImg(Active_Index);
+        }
+
+        function getImg(index, cb){
+            if(Img_Cache[index]){
+                return cb(Img_Cache[index]);
+            }
+            var img = new Image();
+            img.src = Gif_Info['pngList'][index];
+            img.onload = function(){
+                Img_Cache[index] = img;
+                cb(img);
+            };
+        }
+
+        function drawImg(index){
+            $('#Active_Index_Text').html(Active_Index);
+            TextList.forEach(function(val){
+                if(val.index <= index && index < val.index + val.len){
+                    Ctx.set(val.id, {
+                        isPrint: true
+                    }, false);
+                }else {
+                    Ctx.set(val.id, {
+                        isPrint: false
+                    }, false);
+                }
+            });
+            getImg(index, function(img){
+                if(Ctx.id){
+                    img.src = mergeImg(Ctx.DisplayList[Ctx.id].borderStyle.img, img);
+                    img.onload = function(){
+                        Ctx.set(Ctx.id, {
+                            borderStyle: {
+                                img: img
+                            }
+                        });
+                    };
+                    return;
+                }
+                Ctx._dom.width = img.width;
+                Ctx._dom.height = img.height;
+                Ctx.id = Ctx.addImg({
+                    img: img
+                });
+            });
+        }
+
+        function mergeImg(img1, img2){
+            var canvas = document.createElement('canvas');
+            canvas.width = img1.width;
+            canvas.height = img1.height;
+            var ctx = canvas.getContext('2d');
+            ctx.drawImage(img1, 0, 0);
+            ctx.drawImage(img2, 0, 0);
+            return canvas.toDataURL();
+        }
+
+        $('.change-index').on('click', function(){
+            if($(this).attr('change-type') === 'up'){
+                Active_Index--;
+            }else {
+                Active_Index++;
+            }
+            if(Active_Index >= Gif_Info.pngNum){
+                Active_Index = 0;
+            }
+            if(Active_Index < 0){
+                Active_Index = Gif_Info.pngNum - 1;
+            }
+            drawImg(Active_Index);
+        });
+
+        function playTest(){
+            Active_Index = 0;
+            var t = setInterval(function(){
+                drawImg(Active_Index++);
+                if(Active_Index >= Gif_Info.pngNum){
+                    clearInterval(t);
+                }
+            }, 100);
+        }
+
+        function addText(t){
+            if($(t).text() === '保存'){
+                TextList[Current_Text_Index].len = $('#len').val();
+                Ctx.set(Current_Text_Index, {
+                    text: $('#text').val(),
+                    font_size: parseInt($('#font_size').val())
+                });
+            }else {
+                var tmp = {index: Active_Index, len: $('#len').val()};
+                tmp.id = Ctx.addText({
+                    text: $('#text').val(),
+                    font_size: parseInt($('#font_size').val()),
+                    color: '#fff',
+                    isDrag: true,
+                    isPrint: false,
+                    simple: true,
+                    align: 'left'
+                });
+                TextList[tmp.id] = tmp;
+            }
+            drawImg(Active_Index);
+        }
+
+        function saveImg(){
+            var text_list = [];
+            Ctx.DisplayList.forEach(function(val){
+                if(val.type === 'text'){
+                    var tmp = {};
+                    tmp.text = val.text;
+                    tmp.font_size = val.font_size;
+                    tmp.x = val.x;
+                    tmp.y = val.y + val.font_size;
+                    tmp.index = TextList[val.dataIndex].index;
+                    tmp.len = TextList[val.dataIndex].len;
+                    text_list.push(tmp);
+                }
+            });
+            $.ajax({
+                url: window.location.pathname + '/save',
+                type: 'POST',
+                dataType: 'json',
+                data: {
+                    text_list: text_list
+                },
+                success: function (res) {
+                    if(res.code != 200){
+                        return alert(res.code);
+                    }else {
+                        $('#download_url').attr('href', res.result.download_url);
+                        $('#download_url').show();
+                    }
+                },
+                error: function () {
+                    alert('出错!');
+                }
+            });
+            console.log(text_list);
+        }
+    </script>
+</body>
+</html>
